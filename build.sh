@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-archs=(amd64 arm64 ppc64le ppc64 s390x)
+archs=(amd64 arm64)
 
 for arch in ${archs[@]}
 do
