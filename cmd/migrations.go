@@ -24,7 +24,11 @@ to quickly create a Cobra application.`,
 		dir := cmd.Flag("projectDir").Value.String()
 		config := cmd.Flag("configFile").Value.String()
 		kamal := service.NewKamalService(dir, config)
+
+		//acronymChan := make(chan string)
 		report := kamal.AppExec("drush ms --format=json")
+		//acronym := <-acronymChan
+		//fmt.Println(acronym)
 
 		t := table.NewWriter()
 		t.AppendHeader(table.Row{"Acronym", "Group", "Id", "Status", "Total", "Unprocessed", "MessageCount", "LastImported"})

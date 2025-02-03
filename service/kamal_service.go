@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/client"
@@ -19,6 +20,15 @@ import (
 type KamalService struct {
 	projectDir string
 	configFile string
+}
+
+func stringInSlice(a string, list []string) bool {
+	for _, b := range list {
+		if b == a {
+			return true
+		}
+	}
+	return false
 }
 
 func NewKamalService(projectDir, configFile string) *KamalService {
@@ -77,49 +87,63 @@ func (k *KamalService) AppExec(command string) []model.MigrationImportStatus {
 		panic(err)
 	}
 
-	statusCh, errCh := apiClient.ContainerWait(context.Background(), cont.ID, container.WaitConditionRemoved)
-
+	var myout []byte
+	acronyms := []string{}
+	buffer := make([]byte, 256)
 	for {
-		select {
-		case err := <-errCh:
-			panic(err)
-		case <-statusCh: // not running?
-			b, ierr := io.ReadAll(logs)
-			if ierr != nil {
-				panic(ierr)
-			}
-
-			src := strings.NewReader(string(b))
-			stddest := &bytes.Buffer{}
-			errdest := &bytes.Buffer{}
-			stdcopy.StdCopy(stddest, errdest, src)
-
-			var report []model.MigrationImportStatus
-			content := stddest.String()
-			stringSlice := strings.Split(content, "Running docker exec")
-			stringSlice = stringSlice[1:]
-			for _, v := range stringSlice {
-				reAcronym := regexp.MustCompile(`[a-z]+-schools-([a-z]{2,5})-[a-z0-9]{40} drush ms`)
-				matches := reAcronym.FindStringSubmatch(v)
-				acronym := matches[1]
-				reJson := regexp.MustCompile(`(?ms)^\[(.*?)\]`)
-				matchesJson := reJson.FindStringSubmatch(v)
-				jsonString := "[" + matchesJson[1] + "]"
-
-				var dat []model.MigrationImportStatus
-				if err := json.Unmarshal([]byte(jsonString), &dat); err != nil {
-					panic(err)
-				}
-
-				for _, d := range dat {
-					if d.Id != "" {
-						d.Acronym = acronym
-						report = append(report, d)
-					}
+		n, readerr := logs.Read(buffer)
+		if readerr == nil || readerr == io.EOF {
+			myout = append(myout, buffer[:n]...)
+			reAcronym := regexp.MustCompile(`[a-z]+-schools-([a-z]{2,5})-[a-z0-9]{40} drush ms`)
+			matches := reAcronym.FindAllStringSubmatch(string(myout), -1)
+			for _, match := range matches {
+				acronym := match[1]
+				if !stringInSlice(acronym, acronyms) {
+					acronyms = append(acronyms, acronym)
+					fmt.Println(acronym)
 				}
 			}
+		} else {
+			panic(readerr)
+		}
 
-			return report
+		if readerr == io.EOF {
+			break
 		}
 	}
+
+	src := strings.NewReader(string(myout))
+	stddest := &bytes.Buffer{}
+	errdest := &bytes.Buffer{}
+	stdcopy.StdCopy(stddest, errdest, src)
+
+	var report []model.MigrationImportStatus
+	content := stddest.String()
+	stringSlice := strings.Split(content, "Running docker exec")
+	stringSlice = stringSlice[1:]
+	for _, v := range stringSlice {
+		fmt.Println("S---")
+		fmt.Print(v)
+		fmt.Println("E---")
+		reAcronym := regexp.MustCompile(`[a-z]+-schools-([a-z]{2,5})-[a-z0-9]{40} drush ms`)
+		matches := reAcronym.FindStringSubmatch(v)
+		acronym := matches[1]
+		reJson := regexp.MustCompile(`(?ms)^\[(.*?)\]`)
+		matchesJson := reJson.FindStringSubmatch(v)
+		jsonString := "[" + matchesJson[1] + "]"
+
+		var dat []model.MigrationImportStatus
+		if err := json.Unmarshal([]byte(jsonString), &dat); err != nil {
+			panic(err)
+		}
+
+		for _, d := range dat {
+			if d.Id != "" {
+				d.Acronym = acronym
+				report = append(report, d)
+			}
+		}
+	}
+
+	return report
 }
