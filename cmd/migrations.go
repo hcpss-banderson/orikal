@@ -16,13 +16,11 @@ import (
 // migrationsCmd represents the migrations command
 var migrationsCmd = &cobra.Command{
 	Use:   "migrations",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
+	Short: "Get information about migrations",
+	Long: `Get a table of all migration statuses. For example get information about high
+school migrations:
 
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+orikal migrations --projectDir=../fast_phoenix --configFile=config/high-schools.yml`,
 	Run: func(cmd *cobra.Command, args []string) {
 		dir := cmd.Flag("projectDir").Value.String()
 		config := cmd.Flag("configFile").Value.String()
