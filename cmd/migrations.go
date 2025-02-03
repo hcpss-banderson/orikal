@@ -4,9 +4,12 @@ Copyright © 2025 Brendan Anderson <brendan_anderson@hcpss.org>
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
+	"github.com/hcpss-banderson/orikal/model"
 	"github.com/hcpss-banderson/orikal/service"
 	"github.com/jedib0t/go-pretty/v6/table"
+	"github.com/schollz/progressbar/v3"
 	"github.com/spf13/cobra"
 )
 
@@ -25,10 +28,39 @@ to quickly create a Cobra application.`,
 		config := cmd.Flag("configFile").Value.String()
 		kamal := service.NewKamalService(dir, config)
 
-		//acronymChan := make(chan string)
-		report := kamal.AppExec("drush ms --format=json")
-		//acronym := <-acronymChan
-		//fmt.Println(acronym)
+		roles := kamal.GetRoles()
+		bar := progressbar.NewOptions(len(roles),
+			progressbar.OptionSetWidth(32),
+		)
+
+		acronymChan := make(chan string)
+		dataChan := make(chan model.Payload)
+		go func() {
+			kamal.AppExec("drush ms --format=json", acronymChan, dataChan)
+		}()
+
+		for acronym := range acronymChan {
+			bar.Add(1)
+			bar.Describe("Receiving " + acronym + "...")
+		}
+		fmt.Println()
+
+		var report []model.MigrationImportStatus
+		for value := range dataChan {
+			acronym := value.Acronym
+			data := value.Data
+			var dat []model.MigrationImportStatus
+			if err := json.Unmarshal([]byte(data), &dat); err != nil {
+				panic(err)
+			}
+
+			for _, d := range dat {
+				if d.Id != "" {
+					d.Acronym = acronym
+					report = append(report, d)
+				}
+			}
+		}
 
 		t := table.NewWriter()
 		t.AppendHeader(table.Row{"Acronym", "Group", "Id", "Status", "Total", "Unprocessed", "MessageCount", "LastImported"})

@@ -3,14 +3,13 @@ package service
 import (
 	"bytes"
 	"context"
-	"encoding/json"
-	"fmt"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/hcpss-banderson/orikal/model"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"gopkg.in/yaml.v3"
 	"io"
 	"os"
 	"regexp"
@@ -35,13 +34,50 @@ func NewKamalService(projectDir, configFile string) *KamalService {
 	return &KamalService{projectDir, configFile}
 }
 
-func (k *KamalService) AppExec(command string) []model.MigrationImportStatus {
-	apiClient, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+func (k *KamalService) GetRoles() []string {
+	logs := k.RunContainer([]string{"config", "--config-file", k.configFile})
+	var out []byte
+	buffer := make([]byte, 256)
+	for {
+		n, readerr := logs.Read(buffer)
+		if readerr == nil || readerr == io.EOF {
+			out = append(out, buffer[:n]...)
+		} else {
+			panic(readerr)
+		}
+
+		if readerr == io.EOF {
+			break
+		}
+	}
+
+	src := strings.NewReader(string(out))
+	stdout := &bytes.Buffer{}
+	errout := &bytes.Buffer{}
+	stdcopy.StdCopy(stdout, errout, src)
+	content := stdout.Bytes()
+
+	m := make(map[interface{}]interface{})
+	err := yaml.Unmarshal(content, m)
 	if err != nil {
 		panic(err)
 	}
 
+	var roles []string
+	for _, role := range m[":roles"].([]interface{}) {
+		roles = append(roles, role.(string))
+	}
+
+	return roles
+}
+
+func (k *KamalService) RunContainer(command []string) io.ReadCloser {
+	apiClient, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	if err != nil {
+		panic(err)
+	}
 	defer apiClient.Close()
+
 	reader, err := apiClient.ImagePull(context.Background(), "banderson/kamal:latest", image.PullOptions{})
 	if err != nil {
 		panic(err)
@@ -54,7 +90,7 @@ func (k *KamalService) AppExec(command string) []model.MigrationImportStatus {
 		&container.Config{
 			Image:        "banderson/kamal:latest",
 			Env:          []string{"SSH_AUTH_SOCK=/run/host-services/ssh-auth.sock"},
-			Cmd:          []string{"app", "exec", command, "--config-file", k.configFile, "--reuse"},
+			Cmd:          command,
 			AttachStdout: true,
 		},
 		&container.HostConfig{
@@ -87,6 +123,12 @@ func (k *KamalService) AppExec(command string) []model.MigrationImportStatus {
 		panic(err)
 	}
 
+	return logs
+}
+
+func (k *KamalService) AppExec(command string, acronymChan chan string, dataChan chan model.Payload) {
+	logs := k.RunContainer([]string{"app", "exec", command, "--config-file", k.configFile, "--reuse"})
+
 	var myout []byte
 	acronyms := []string{}
 	buffer := make([]byte, 256)
@@ -100,7 +142,7 @@ func (k *KamalService) AppExec(command string) []model.MigrationImportStatus {
 				acronym := match[1]
 				if !stringInSlice(acronym, acronyms) {
 					acronyms = append(acronyms, acronym)
-					fmt.Println(acronym)
+					acronymChan <- acronym
 				}
 			}
 		} else {
@@ -108,6 +150,7 @@ func (k *KamalService) AppExec(command string) []model.MigrationImportStatus {
 		}
 
 		if readerr == io.EOF {
+			close(acronymChan)
 			break
 		}
 	}
@@ -117,33 +160,20 @@ func (k *KamalService) AppExec(command string) []model.MigrationImportStatus {
 	errdest := &bytes.Buffer{}
 	stdcopy.StdCopy(stddest, errdest, src)
 
-	var report []model.MigrationImportStatus
 	content := stddest.String()
 	stringSlice := strings.Split(content, "Running docker exec")
 	stringSlice = stringSlice[1:]
 	for _, v := range stringSlice {
-		fmt.Println("S---")
-		fmt.Print(v)
-		fmt.Println("E---")
 		reAcronym := regexp.MustCompile(`[a-z]+-schools-([a-z]{2,5})-[a-z0-9]{40} drush ms`)
 		matches := reAcronym.FindStringSubmatch(v)
+
 		acronym := matches[1]
 		reJson := regexp.MustCompile(`(?ms)^\[(.*?)\]`)
 		matchesJson := reJson.FindStringSubmatch(v)
 		jsonString := "[" + matchesJson[1] + "]"
 
-		var dat []model.MigrationImportStatus
-		if err := json.Unmarshal([]byte(jsonString), &dat); err != nil {
-			panic(err)
-		}
-
-		for _, d := range dat {
-			if d.Id != "" {
-				d.Acronym = acronym
-				report = append(report, d)
-			}
-		}
+		dataChan <- model.Payload{acronym, jsonString}
 	}
 
-	return report
+	close(dataChan)
 }
