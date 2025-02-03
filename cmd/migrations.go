@@ -40,8 +40,8 @@ to quickly create a Cobra application.`,
 		}()
 
 		for acronym := range acronymChan {
+			bar.Describe("Received " + acronym + "...")
 			bar.Add(1)
-			bar.Describe("Receiving " + acronym + "...")
 		}
 		fmt.Println()
 
