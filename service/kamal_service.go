@@ -136,7 +136,7 @@ func (k *KamalService) AppExec(command string, acronymChan chan string, dataChan
 		n, readerr := logs.Read(buffer)
 		if readerr == nil || readerr == io.EOF {
 			myout = append(myout, buffer[:n]...)
-			reAcronym := regexp.MustCompile(`[a-z]+-schools-([a-z]{2,5})-[a-z0-9]{40} drush ms`)
+			reAcronym := regexp.MustCompile(`[a-z]+-schools-([a-z]{2,5})-[a-z0-9]{40} drush`)
 			matches := reAcronym.FindAllStringSubmatch(string(myout), -1)
 			for _, match := range matches {
 				acronym := match[1]
@@ -164,7 +164,7 @@ func (k *KamalService) AppExec(command string, acronymChan chan string, dataChan
 	stringSlice := strings.Split(content, "Running docker exec")
 	stringSlice = stringSlice[1:]
 	for _, v := range stringSlice {
-		reAcronym := regexp.MustCompile(`[a-z]+-schools-([a-z]{2,5})-[a-z0-9]{40} drush ms`)
+		reAcronym := regexp.MustCompile(`[a-z]+-schools-([a-z]{2,5})-[a-z0-9]{40} drush`)
 		matches := reAcronym.FindStringSubmatch(v)
 
 		acronym := matches[1]

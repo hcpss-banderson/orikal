@@ -9,6 +9,7 @@ import (
 )
 
 type StringInt int
+
 type MigrationImportStatus struct {
 	Id           string    `json:"id"`
 	GroupId      string    `json:"group"`
