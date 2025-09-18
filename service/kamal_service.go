@@ -170,7 +170,15 @@ func (k *KamalService) AppExec(command string, acronymChan chan string, dataChan
 		acronym := matches[1]
 		reJson := regexp.MustCompile(`(?ms)^\[(.*?)\]`)
 		matchesJson := reJson.FindStringSubmatch(v)
-		jsonString := "[" + matchesJson[1] + "]"
+		jsonString := ""
+		if len(matchesJson) >= 2 {
+			jsonString = "[" + matchesJson[1] + "]"
+
+		} else {
+			reJson = regexp.MustCompile(`(?ms)^\{(.*?)\n\}\n`)
+			matchesJson = reJson.FindStringSubmatch(v)
+			jsonString = "{" + matchesJson[1] + "}"
+		}
 
 		dataChan <- model.Payload{acronym, jsonString}
 	}
